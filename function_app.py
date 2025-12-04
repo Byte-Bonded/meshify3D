@@ -3,19 +3,35 @@ import json
 import os
 import base64
 from datetime import datetime
+from pathlib import Path
 
 app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
+
+
+# Get the base directory for static files
+def get_static_file_path(filename: str) -> str:
+    """Get the correct path for static files in Azure Functions."""
+    # Try multiple possible locations
+    possible_paths = [
+        Path(__file__).parent / "static" / filename,
+        Path("/home/site/wwwroot/static") / filename,
+        Path(os.environ.get("AzureWebJobsScriptRoot", "")) / "static" / filename,
+    ]
+    
+    for path in possible_paths:
+        if path.exists():
+            return str(path)
+    
+    return str(possible_paths[0])  # Return first path even if not found
 
 
 @app.route(route="", methods=["GET"])
 def serve_homepage(req: func.HttpRequest) -> func.HttpResponse:
     """
-    Serve the main HTML page.
+    Serve the main HTML page at root URL.
     """
     try:
-        # Get the directory where the function app is located
-        current_dir = os.path.dirname(os.path.realpath(__file__))
-        html_path = os.path.join(current_dir, "static", "index.html")
+        html_path = get_static_file_path("index.html")
         
         with open(html_path, "r", encoding="utf-8") as f:
             html_content = f.read()
@@ -25,14 +41,19 @@ def serve_homepage(req: func.HttpRequest) -> func.HttpResponse:
             mimetype="text/html",
             status_code=200
         )
-    except FileNotFoundError:
+    except FileNotFoundError as e:
         return func.HttpResponse(
-            "Homepage not found",
+            f"Homepage not found. Path tried: {html_path}. Error: {str(e)}",
             status_code=404
+        )
+    except Exception as e:
+        return func.HttpResponse(
+            f"Error loading homepage: {str(e)}",
+            status_code=500
         )
 
 
-@app.route(route="upload", methods=["POST"])
+@app.route(route="api/upload", methods=["POST"])
 def upload_image(req: func.HttpRequest) -> func.HttpResponse:
     """
     Handle image upload for 3D mesh generation.
@@ -86,7 +107,7 @@ def upload_image(req: func.HttpRequest) -> func.HttpResponse:
         )
 
 
-@app.route(route="generate", methods=["POST"])
+@app.route(route="api/generate", methods=["POST"])
 def generate_mesh(req: func.HttpRequest) -> func.HttpResponse:
     """
     Generate 3D mesh from uploaded image.
@@ -134,7 +155,7 @@ def generate_mesh(req: func.HttpRequest) -> func.HttpResponse:
         )
 
 
-@app.route(route="meshify")
+@app.route(route="api/meshify")
 def meshify_main(req: func.HttpRequest) -> func.HttpResponse:
     """
     Main endpoint for Meshify3D Azure Function.
@@ -168,7 +189,7 @@ def meshify_main(req: func.HttpRequest) -> func.HttpResponse:
     )
 
 
-@app.route(route="health")
+@app.route(route="api/health")
 def health_check(req: func.HttpRequest) -> func.HttpResponse:
     """
     Health check endpoint.
@@ -187,7 +208,7 @@ def health_check(req: func.HttpRequest) -> func.HttpResponse:
     )
 
 
-@app.route(route="info")
+@app.route(route="api/info")
 def get_info(req: func.HttpRequest) -> func.HttpResponse:
     """
     Information endpoint.
