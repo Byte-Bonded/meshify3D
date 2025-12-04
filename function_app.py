@@ -1,8 +1,137 @@
 import azure.functions as func
 import json
+import os
+import base64
 from datetime import datetime
 
 app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
+
+
+@app.route(route="", methods=["GET"])
+def serve_homepage(req: func.HttpRequest) -> func.HttpResponse:
+    """
+    Serve the main HTML page.
+    """
+    try:
+        # Get the directory where the function app is located
+        current_dir = os.path.dirname(os.path.realpath(__file__))
+        html_path = os.path.join(current_dir, "static", "index.html")
+        
+        with open(html_path, "r", encoding="utf-8") as f:
+            html_content = f.read()
+        
+        return func.HttpResponse(
+            html_content,
+            mimetype="text/html",
+            status_code=200
+        )
+    except FileNotFoundError:
+        return func.HttpResponse(
+            "Homepage not found",
+            status_code=404
+        )
+
+
+@app.route(route="upload", methods=["POST"])
+def upload_image(req: func.HttpRequest) -> func.HttpResponse:
+    """
+    Handle image upload for 3D mesh generation.
+    Accepts multipart/form-data with an image file.
+    """
+    try:
+        # Get the uploaded file
+        file = req.files.get('image')
+        
+        if not file:
+            # Try to get from body as base64
+            try:
+                body = req.get_json()
+                image_data = body.get('image')
+                filename = body.get('filename', 'uploaded_image.jpg')
+            except:
+                return func.HttpResponse(
+                    json.dumps({"error": "No image provided"}),
+                    mimetype="application/json",
+                    status_code=400
+                )
+        else:
+            filename = file.filename
+            image_data = base64.b64encode(file.read()).decode('utf-8')
+        
+        # In a real implementation, this would:
+        # 1. Save the image to Azure Blob Storage
+        # 2. Trigger the 3D mesh generation pipeline
+        # 3. Return a job ID for status tracking
+        
+        response_data = {
+            "status": "success",
+            "message": "Image uploaded successfully",
+            "filename": filename,
+            "job_id": f"mesh_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}",
+            "estimated_time": "30 seconds",
+            "timestamp": datetime.utcnow().isoformat() + "Z"
+        }
+        
+        return func.HttpResponse(
+            json.dumps(response_data, indent=2),
+            mimetype="application/json",
+            status_code=200
+        )
+        
+    except Exception as e:
+        return func.HttpResponse(
+            json.dumps({"error": str(e)}),
+            mimetype="application/json",
+            status_code=500
+        )
+
+
+@app.route(route="generate", methods=["POST"])
+def generate_mesh(req: func.HttpRequest) -> func.HttpResponse:
+    """
+    Generate 3D mesh from uploaded image.
+    This is a placeholder for the actual ML pipeline.
+    """
+    try:
+        body = req.get_json()
+        job_id = body.get('job_id')
+        
+        if not job_id:
+            return func.HttpResponse(
+                json.dumps({"error": "job_id is required"}),
+                mimetype="application/json",
+                status_code=400
+            )
+        
+        # Placeholder response - in production this would:
+        # 1. Check job status
+        # 2. Return mesh data or processing status
+        
+        response_data = {
+            "status": "completed",
+            "job_id": job_id,
+            "mesh": {
+                "format": "obj",
+                "vertices": 1024,
+                "faces": 2048,
+                "download_url": f"/api/download/{job_id}"
+            },
+            "processing_time": "28.5 seconds",
+            "timestamp": datetime.utcnow().isoformat() + "Z"
+        }
+        
+        return func.HttpResponse(
+            json.dumps(response_data, indent=2),
+            mimetype="application/json",
+            status_code=200
+        )
+        
+    except Exception as e:
+        return func.HttpResponse(
+            json.dumps({"error": str(e)}),
+            mimetype="application/json",
+            status_code=500
+        )
 
 
 @app.route(route="meshify")
